@@ -17,10 +17,10 @@ import java.util.Map;
 
 public class VideoPlayer implements ActionListener {
     final static int FrameNum = 9000;
-    final static int BufferSize = 300;
+    final static int BufferSize = 600;
     final static int FrameRate = 30;
-    final static int WIDTH = 352;
-    final static int HEIGHT = 288;
+    final static int WIDTH = 480;
+    final static int HEIGHT = 270;
     final static int START = 0, PAUSE = 1, STOP = 2;
     Map<Integer, List<HyperLink>> matadataMap;
     BufferedImage[] images;
@@ -168,14 +168,13 @@ public class VideoPlayer implements ActionListener {
 
     public long loadFrame(int k){
         long t = System.currentTimeMillis();
-        if(k >= FrameNum)
-            return 0;
-        String filename = path + "/" + folder + String.format("%04d", k+1) + ".rgb";
+        String filename = path + "/" + folder + ".rgb";
 //        System.out.println("Loading " + (k + 1) + "th frame.");
         File f = new File(filename);
-        byte[] bFile = new byte[(int) f.length()];
+        byte[] bFile = new byte[WIDTH*HEIGHT*3];
         try{
             FileInputStream is  = new FileInputStream(f);
+            is.skip(WIDTH*HEIGHT*3*curFrame);
             is.read(bFile);
             is.close();
         }catch (Exception e){
@@ -193,9 +192,10 @@ public class VideoPlayer implements ActionListener {
                 ind++;
             }
         }
-        if(matadataMap.containsKey(k)){
+        //old code
+        if(false){
             Graphics2D g2d = images[curImages].createGraphics();
-            List<HyperLink> list = matadataMap.get(k);
+            List<HyperLink> list = matadataMap.get(0);
             for(int i = 0; i < list.size(); i++){
                 HyperLink hl = list.get(i);
                 g2d.setColor(hl.getColor());
@@ -254,9 +254,9 @@ public class VideoPlayer implements ActionListener {
         try {
             FileInputStream inputStream = new FileInputStream(filename);
             if (audioPlayer == null)
-                audioPlayer = new AudioPlayer(inputStream, from / 30 * 44100 );
+                audioPlayer = new AudioPlayer(inputStream, from / 30 * 48000 );
             else
-                audioPlayer.setAudio(inputStream, from / 30 * 44100 );
+                audioPlayer.setAudio(inputStream, from / 30 * 48000 );
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -268,7 +268,7 @@ public class VideoPlayer implements ActionListener {
         this.path = path;
         this.folder = folder;
         this.from = from;
-        loadMetadata();
+        //data();
         loadVideo();
         loadAudio();
     }
@@ -276,7 +276,7 @@ public class VideoPlayer implements ActionListener {
     public void loadFolder(int from){
         videoState = STOP;
         this.from = from;
-        loadMetadata();
+        //loadMetadata();
         loadVideo();
         loadAudio();
     }
@@ -289,14 +289,16 @@ public class VideoPlayer implements ActionListener {
                 super.run();
                 long t = 0;
                 for(int i = 0; i < FrameNum - from && videoState != STOP; i++){
+                    long paintstart=System.currentTimeMillis();
                     imageLabel.setIcon(new ImageIcon(images[i%BufferSize]));
                     imageLabel.revalidate();
                     imageLabel.repaint();
+                    long painttime = System.currentTimeMillis() - paintstart;
                     t += loadFrame(curFrame++);
                     try {
 //                        sleep(1000 / FrameRate - 3);
-                        if(1000 / FrameRate - t >= 0){
-                            sleep(1000 / (FrameRate+2) - t);
+                        if(1000 / FrameRate - t - painttime>= 0){
+                            sleep(1000 / FrameRate - t - painttime);
                             t = 0;
                         }
                         else
@@ -339,7 +341,7 @@ public class VideoPlayer implements ActionListener {
     public void actionPerformed(ActionEvent e){
         if(e.getSource() == this.openBtn){
             System.out.println("Open File clicked");
-            JFileChooser fc = new JFileChooser("/Users/taihsunchen/IdeaProjects/CSCI576_Final_Project");
+            JFileChooser fc = new JFileChooser();
             fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
             int returnVal = fc.showOpenDialog(null);
             if (returnVal == JFileChooser.APPROVE_OPTION) {

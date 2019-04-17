@@ -1,4 +1,3 @@
-import sun.jvm.hotspot.ui.JavaStackTracePanel;
 
 import java.awt.*;
 import java.awt.event.*;
@@ -12,7 +11,6 @@ import java.nio.file.Files;
 import java.util.*;
 import java.awt.event.ActionListener;
 import java.util.logging.Level;
-import javafx.scene.text.*;
 import java.awt.Image;
 import javax.swing.ImageIcon;
 import java.io.FileWriter;
