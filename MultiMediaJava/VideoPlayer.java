@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 
 public class VideoPlayer implements ActionListener {
     final static int FrameNum = 9000;
-    final static int BufferSize = 2000;
+    final static int BufferSize = 600;
     final static double FrameRate = 30;
     final static int WIDTH = 480;
     final static int HEIGHT = 270;
@@ -286,22 +286,17 @@ public class VideoPlayer implements ActionListener {
 
     public void playVideo(){
         videoState = START;
-        loadFrameThread = new Thread(){
-            @Override
-            public void run() {
-                loadFrame();
-            }
-        };
         videoThread = new Thread(){
             @Override
             public void run() {
                 super.run();
                 double t = 0;
+                long pausetime=0; //time that the video has pause ()
                 long startvideo=System.currentTimeMillis();
                 for(int i = 0; i < FrameNum - from && videoState != STOP; i++){
                     long paintstart=System.currentTimeMillis();
                     long frame_offset = 0;
-                    int supposed_frame = (int)(((System.currentTimeMillis() - startvideo)/(double)1000)*FrameRate);
+                    int supposed_frame = (int)(((System.currentTimeMillis() - startvideo - pausetime)/(double)1000)*FrameRate);
                     System.out.println(supposed_frame);
                     if((supposed_frame != i)) {
                         frame_offset = supposed_frame-i;
@@ -331,6 +326,7 @@ public class VideoPlayer implements ActionListener {
                         e.printStackTrace();
                     }
                     if(videoState == PAUSE){
+                        long pausestart=System.currentTimeMillis();
                         synchronized (this){
                             try {
                                 wait();
@@ -338,6 +334,7 @@ public class VideoPlayer implements ActionListener {
                                 e.printStackTrace();
                             }
                         }
+                        pausetime += System.currentTimeMillis() - pausestart;
                     }
                 }
             }
