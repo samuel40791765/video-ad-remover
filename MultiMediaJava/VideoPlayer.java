@@ -14,11 +14,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 public class VideoPlayer implements ActionListener {
     final static int FrameNum = 9000;
-    final static int BufferSize = 600;
-    final static int FrameRate = 30;
+    final static int BufferSize = 2000;
+    final static double FrameRate = 30;
     final static int WIDTH = 480;
     final static int HEIGHT = 270;
     final static int START = 0, PAUSE = 1, STOP = 2;
@@ -44,6 +45,7 @@ public class VideoPlayer implements ActionListener {
     int videoState;
     AudioPlayer audioPlayer;
     Thread audioThread;
+    Thread loadFrameThread;
     public  VideoPlayer(){
         frame = new JFrame("VideoPlayer");
         frame.setPreferredSize(new Dimension(500, 400));
@@ -166,7 +168,7 @@ public class VideoPlayer implements ActionListener {
 
     }
 
-    public long loadFrame(int k){
+    public long loadFrame(){
         long t = System.currentTimeMillis();
         String filename = path + "/" + folder + ".rgb";
 //        System.out.println("Loading " + (k + 1) + "th frame.");
@@ -174,7 +176,7 @@ public class VideoPlayer implements ActionListener {
         byte[] bFile = new byte[WIDTH*HEIGHT*3];
         try{
             FileInputStream is  = new FileInputStream(f);
-            is.skip(WIDTH*HEIGHT*3*curFrame);
+            is.skip((long)WIDTH*HEIGHT*3*curFrame);
             is.read(bFile);
             is.close();
         }catch (Exception e){
@@ -239,7 +241,8 @@ public class VideoPlayer implements ActionListener {
 //                    ind++;
 //                }
 //            }
-            loadFrame(curFrame++);
+            loadFrame();
+            curFrame++;
         }
         System.out.println("Loaded successfully");
         imageLabel.setIcon(new ImageIcon(images[0]));
@@ -283,26 +286,47 @@ public class VideoPlayer implements ActionListener {
 
     public void playVideo(){
         videoState = START;
+        loadFrameThread = new Thread(){
+            @Override
+            public void run() {
+                loadFrame();
+            }
+        };
         videoThread = new Thread(){
             @Override
             public void run() {
                 super.run();
-                long t = 0;
+                double t = 0;
+                long startvideo=System.currentTimeMillis();
                 for(int i = 0; i < FrameNum - from && videoState != STOP; i++){
                     long paintstart=System.currentTimeMillis();
+                    long frame_offset = 0;
+                    int supposed_frame = (int)(((System.currentTimeMillis() - startvideo)/(double)1000)*FrameRate);
+                    System.out.println(supposed_frame);
+                    if((supposed_frame != i)) {
+                        frame_offset = supposed_frame-i;
+                        i = supposed_frame;
+                    }
                     imageLabel.setIcon(new ImageIcon(images[i%BufferSize]));
                     imageLabel.revalidate();
                     imageLabel.repaint();
+                    for(int j=0;j<frame_offset + 1;j++) {
+                        loadFrame();
+                        curFrame++;
+                    }
+                    //t += loadFrame(curFrame++);
                     long painttime = System.currentTimeMillis() - paintstart;
-                    t += loadFrame(curFrame++);
+                    t+=painttime;
                     try {
 //                        sleep(1000 / FrameRate - 3);
-                        if(1000 / FrameRate - t - painttime>= 0){
-                            sleep(1000 / FrameRate - t - painttime);
+                        if(1000 / FrameRate - t >= 0){
+                            TimeUnit.MICROSECONDS.sleep((long)(1000000 / FrameRate - t));
                             t = 0;
                         }
-                        else
-                            t -= 1000 / FrameRate;
+                        else {
+                            System.out.println("test");
+                            t-= 1000 / FrameRate;
+                        }
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
