@@ -15,6 +15,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;                                                                                                                                          
 import org.opencv.core.Core;                                                                                                             
 import org.opencv.core.CvType;                                                                                                           
@@ -41,6 +43,7 @@ public class VideoPlayer implements ActionListener {
     final static int START = 0, PAUSE = 1, STOP = 2;
     
     int Stage_Reference = 0;
+    Set<Integer> Jump_Reference = new HashSet<Integer>();
 
     Map<Integer, List<HyperLink>> matadataMap;
     BufferedImage[] images;
@@ -311,7 +314,9 @@ public class VideoPlayer implements ActionListener {
                     //System.out.println((curFrame/ExtractRate-1) + " - " + curFrame/ExtractRate + " " + "** " + d + " **");   
                     if(curFrame/ExtractRate - Stage_Reference == FrameRate/ExtractRate*15){
                         System.out.println("Ads is from " + Stage_Reference/(FrameRate/ExtractRate) + " sec to " + (curFrame/ExtractRate)/(FrameRate/ExtractRate) + " sec");
+                        Jump_Reference.add((int)(Stage_Reference/(FrameRate/ExtractRate)));
                     }
+
                     Stage_Reference = curFrame/ExtractRate;
                 }
             }
@@ -373,12 +378,12 @@ public class VideoPlayer implements ActionListener {
                     int supposed_frame = (int)(((System.currentTimeMillis() - startvideo - pausetime)/(double)1000)*FrameRate);
                     
                     //System.out.println(supposed_frame);
-                    
+ 
                     if((supposed_frame != i)) {
                         frame_offset = supposed_frame-i;
                         i = supposed_frame;
                     }
-
+                    
                     imageLabel.setIcon(new ImageIcon(images[i%BufferSize]));
                     imageLabel.revalidate();
                     imageLabel.repaint();
@@ -403,6 +408,7 @@ public class VideoPlayer implements ActionListener {
                                 //System.out.println((curFrame/ExtractRate-1) + " - " + curFrame/ExtractRate + " " + "** " + d + " **");   
                                 if(curFrame/ExtractRate - Stage_Reference == FrameRate/ExtractRate*15){
                                     System.out.println("Ads is from " + Stage_Reference/(FrameRate/ExtractRate) + " sec to " + (curFrame/ExtractRate)/(FrameRate/ExtractRate) + " sec");
+                                    Jump_Reference.add((int)(Stage_Reference/(FrameRate/ExtractRate)));
                                 }
                                 Stage_Reference = curFrame/ExtractRate;
                             }
