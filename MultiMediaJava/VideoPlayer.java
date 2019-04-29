@@ -360,12 +360,12 @@ public class VideoPlayer implements ActionListener {
                     long frame_offset = 0;
                     int supposed_frame = (int)(((System.currentTimeMillis() - startvideo - pausetime)/(double)1000)*FrameRate);
                     
-                    //System.out.println(supposed_frame);
                     // force to the supposed frame of this second
                     if((supposed_frame != i)) {
                         frame_offset = supposed_frame-i;
                         i = supposed_frame;
                     }
+
                     imageLabel.setIcon(new ImageIcon(images[i%BufferSize]));
                     imageLabel.revalidate();
                     imageLabel.repaint();
