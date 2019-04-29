@@ -1,6 +1,11 @@
 env/
 venv/
+feature-output/
 dataset/
 dataset2/
 data/
 .idea/
+MultiMediaJava/output.rgb
+MultiMediaJava/output.wav
+MultiMediaJava/out/production/MultiMedia/output.rgb
+MultiMediaJava/out/production/MultiMedia/output.wav
