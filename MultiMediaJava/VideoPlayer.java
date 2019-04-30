@@ -36,6 +36,9 @@ public class VideoPlayer implements ActionListener {
 
     int Stage_Reference = 0;
     ArrayList<Integer> Jump_Reference = new ArrayList<>();
+    ArrayList<String> logo_names = new ArrayList<>();
+    ArrayList<Mat> logo_mat = new ArrayList<>();
+    ArrayList<ArrayList<Integer>> frame_matches = new ArrayList<>();
 
     BufferedImage[] images;
     Mat[] reference_images;
@@ -61,7 +64,10 @@ public class VideoPlayer implements ActionListener {
     JPanel pausePanel;
     JButton stopBtn;
     JPanel stopPanel;
+    JCheckBox adCheckbox;
 
+
+    boolean SmartAdRemover=false;
     Thread videoThread;
     int videoState;
     AudioPlayer audioPlayer;
@@ -69,7 +75,7 @@ public class VideoPlayer implements ActionListener {
 
     public  VideoPlayer(){
         frame = new JFrame("VideoPlayer");
-        frame.setPreferredSize(new Dimension(500, 400));
+        frame.setPreferredSize(new Dimension(800, 500));
         GridBagLayout gLayout = new GridBagLayout();
         frame.getContentPane().setLayout(gLayout);
         openBtn = new JButton("Open File");
@@ -82,6 +88,13 @@ public class VideoPlayer implements ActionListener {
         c.gridx = 1;
         c.gridy = 0;
         frame.add(openPanel, c);
+
+        JPanel checkBoxPanel = new JPanel();
+        adCheckbox = new JCheckBox("Smart Ad-Remover");
+        checkBoxPanel.add(adCheckbox);
+        c.gridx = 2;
+        c.gridy = 0;
+        frame.add(checkBoxPanel, c);
 
         playBtn = new JButton("Play");
         playBtn.addActionListener(this);
@@ -141,12 +154,10 @@ public class VideoPlayer implements ActionListener {
         }
 
         if(curImages%ExtractRate == 0){
-            if(reference_images[curImages/ExtractRate] == null){
+            if(reference_images[curImages/ExtractRate] == null)
                 reference_images[curImages/ExtractRate] = new Mat(HEIGHT, WIDTH, CvType.CV_8UC3);
-            }
-            if(matching_reference_images[curImages/ExtractRate] == null){
+            if(matching_reference_images[curImages/ExtractRate] == null)
                 matching_reference_images[curImages/ExtractRate] = new Mat(HEIGHT, WIDTH, CvType.CV_8UC3);
-            }
         }
         Mat temp = new Mat(HEIGHT, WIDTH, CvType.CV_8UC3);
         for(int h = 0, ind = 0; h < HEIGHT; h++){
@@ -185,8 +196,8 @@ public class VideoPlayer implements ActionListener {
         }
         matching_reference_images[(curFrame/ExtractRate)%(BufferSize/ExtractRate)] = temp;
         //Imgproc.cvtColor(temp,matching_reference_images[(curFrame/ExtractRate)%(BufferSize/ExtractRate)],Imgproc.COLOR_BGR2GRAY);
-        //if(curImages%ExtractRate == 0)
-            //processFrame();
+        if(curImages%ExtractRate == 0 && SmartAdRemover)
+            processFrame();
 
         curImages = (curImages + 1) % BufferSize;
         return System.currentTimeMillis() - t;
@@ -194,46 +205,60 @@ public class VideoPlayer implements ActionListener {
 
     //find logos in the frame
     public void processFrame(){
-        String logo = "../dataset2/Brand Images/Mcdonalds_logo.bmp";
 
-        Mat img1 = new Mat();
-        //Mat img2 = new Mat(HEIGHT,WIDTH,CvType.CV_8UC3);
+        //Mat img1 = Imgcodecs.imread(logo, Imgcodecs.IMREAD_COLOR);
         Mat img2 = matching_reference_images[(curFrame/ExtractRate)%(BufferSize/ExtractRate)];
-        img1 = Imgcodecs.imread(logo, Imgcodecs.IMREAD_COLOR);
         //Imgproc.cvtColor(Imgcodecs.imread(logo, Imgcodecs.IMREAD_COLOR),img1,Imgproc.COLOR_BGR2RGB);
+
+        // create keypoints and descriptors for logo images and frames
+        ArrayList<MatOfKeyPoint> logo_keypoints = new ArrayList<>();
+        ArrayList<Mat> logo_descriptors = new ArrayList<>();
+        ArrayList<List<MatOfDMatch>> logo_knnMatches = new ArrayList<>();
+
+        MatOfKeyPoint keypoints2 = new MatOfKeyPoint();
+        Mat descriptors2 = new Mat();
+
         //-- Step 1: Detect the keypoints using SURF Detector, compute the descriptors
         int hessianThreshold = 400;
-        int nOctaves = 4, nOctaveLayers = 5;
+        int nOctaves = 4, nOctaveLayers = 6;
         boolean extended = false, upright = false;
+        //ORB detector = ORB.create();
         SIFT detector = SIFT.create(hessianThreshold, nOctaveLayers);
-        MatOfKeyPoint keypoints1 = new MatOfKeyPoint(), keypoints2 = new MatOfKeyPoint();
-        Mat descriptors1 = new Mat(), descriptors2 = new Mat();
-        detector.detectAndCompute(img1, new Mat(), keypoints1, descriptors1);
+        DescriptorMatcher matcher = DescriptorMatcher.create(DescriptorMatcher.FLANNBASED);
         detector.detectAndCompute(img2, new Mat(), keypoints2, descriptors2);
         //-- Step 2: Matching descriptor vectors with a FLANN based matcher
         // Since SURF is a floating-point descriptor NORM_L2 is used
-        DescriptorMatcher matcher = DescriptorMatcher.create(DescriptorMatcher.BRUTEFORCE);
-        List<MatOfDMatch> knnMatches = new ArrayList<>();
-        matcher.knnMatch(descriptors1, descriptors2, knnMatches, 2);
+        for(int i=0;i<logo_mat.size();i++) {
+            logo_keypoints.add(new MatOfKeyPoint());
+            logo_descriptors.add(new Mat());
+            detector.detectAndCompute(logo_mat.get(i), new Mat(), logo_keypoints.get(i), logo_descriptors.get(i));
+            logo_knnMatches.add(new ArrayList<>());
+            matcher.knnMatch(logo_descriptors.get(i), descriptors2, logo_knnMatches.get(i), 2);
+        }
+
         //-- Filter matches using the Lowe's ratio test
         float ratioThresh = 0.65f;
-        List<DMatch> listOfGoodMatches = new ArrayList<>();
-        for (int i = 0; i < knnMatches.size(); i++) {
-            if (knnMatches.get(i).rows() > 1) {
-                DMatch[] matches = knnMatches.get(i).toArray();
-                if (matches[0].distance < ratioThresh * matches[1].distance) {
-                    listOfGoodMatches.add(matches[0]);
+        for(int j=0;j<logo_knnMatches.size();j++) {
+            List<DMatch> listOfGoodMatches = new ArrayList<>();
+            for (int i = 0; i < logo_knnMatches.get(j).size(); i++) {
+                if (logo_knnMatches.get(j).get(i).rows() > 1) {
+                    DMatch[] matches = logo_knnMatches.get(j).get(i).toArray();
+                    if (matches[0].distance < ratioThresh * matches[1].distance) {
+                        listOfGoodMatches.add(matches[0]);
+                    }
                 }
             }
+//            MatOfDMatch goodMatches = new MatOfDMatch();
+//            goodMatches.fromList(listOfGoodMatches);
+//            frame_matches.get(j).add(listOfGoodMatches.size());
+//            //-- Draw matches
+//            Mat imgMatches = new Mat();
+//            Features2d.drawMatches(logo_mat.get(j), logo_keypoints.get(j), img2, keypoints2, goodMatches, imgMatches, Scalar.all(-1),
+//                    Scalar.all(-1), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
+//            //-- Show detected matches
+//
+//            Imgcodecs.imwrite("img" + j +"_" +curFrame/ExtractRate+"_"+ listOfGoodMatches.size() +".png", imgMatches);
         }
-        MatOfDMatch goodMatches = new MatOfDMatch();
-        goodMatches.fromList(listOfGoodMatches);
-        //-- Draw matches
-        Mat imgMatches = new Mat();
-        Features2d.drawMatches(img1, keypoints1, img2, keypoints2, goodMatches, imgMatches, Scalar.all(-1),
-                Scalar.all(-1), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
-        //-- Show detected matches
-        Imgcodecs.imwrite("img_"+curFrame/ExtractRate+"_"+ listOfGoodMatches.size() +".png", imgMatches);
     }
 
     // to play the outputted rgb file
@@ -251,9 +276,8 @@ public class VideoPlayer implements ActionListener {
             e.printStackTrace();
         }
 
-        if (images[curImages] == null) {
+        if (images[curImages] == null)
             images[curImages] = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
-        }
 
         for (int h = 0, ind = 0; h < HEIGHT; h++) {
             for (int w = 0; w < WIDTH; w++) {
@@ -265,7 +289,6 @@ public class VideoPlayer implements ActionListener {
                 ind++;
             }
         }
-
         curImages = (curImages + 1) % BufferSize;
         return System.currentTimeMillis() - t;
     }
@@ -313,16 +336,16 @@ public class VideoPlayer implements ActionListener {
         this.Adsdir = new File(dir.getPath() + "/Ads");
         this.logosdir = new File(dir.getPath() + "/Brand Images");
         System.out.println(this.Videodir);
+
+        // load the main rgb and wav file in Videos dir
         System.out.println("Loading rgb and wav" + "...");
         String filename = "";
         String audio_filename="";
         for (File file : Videodir.listFiles()) {
-            if (file.getName().endsWith((".rgb"))) {
+            if (file.getName().endsWith((".rgb")))
                 filename = file.getPath();
-            }
-            if (file.getName().endsWith((".wav"))) {
+            if (file.getName().endsWith((".wav")))
                 audio_filename = file.getPath();
-            }
         }
         if(filename == "")
             System.out.println("rgb file not found");
@@ -332,6 +355,39 @@ public class VideoPlayer implements ActionListener {
             System.out.println("wav file not found");
         else
             this.mainaudio = audio_filename;
+
+        if(adCheckbox.isSelected())
+            this.SmartAdRemover = true;
+        else
+            this.SmartAdRemover = false;
+
+        frame_matches.clear();
+        logo_names.clear();
+        logo_mat.clear();
+        // load the logo files in Videos dir
+        if(this.SmartAdRemover) {
+            System.out.println("Loading logos" + "...");
+            //load the logo rgb files
+            ArrayList<String> logo_strings = new ArrayList<>();
+            ArrayList<String> logo_name_temp = new ArrayList<>();
+            for (File file : logosdir.listFiles()) {
+                if (file.getName().endsWith((".bmp"))) {
+                    logo_strings.add(file.getPath());
+                    logo_name_temp.add(file.getName());
+                }
+            }
+            if (logo_strings.isEmpty())
+                System.out.println("Logos not found");
+            else {
+                for (int i = 0; i < logo_strings.size(); i++) {
+                    this.logo_mat.add(Imgcodecs.imread(logo_strings.get(i), Imgcodecs.IMREAD_COLOR));
+                    this.logo_names.add(logo_name_temp.get(i).substring(0, logo_name_temp.get(i).indexOf("_")).toLowerCase());
+                    this.frame_matches.add(new ArrayList<>());
+                }
+            }
+        }
+        for(int i=0;i<logo_names.size();i++)
+            System.out.println(logo_names.get(i));
         //data();
         Jump_Reference.clear();
         preprocessVideo();
@@ -500,9 +556,8 @@ public class VideoPlayer implements ActionListener {
                 Imgproc.calcHist(Arrays.asList(reference_images[(curFrame / ExtractRate - 1) % (BufferSize / ExtractRate)]), new MatOfInt(0), new Mat(), y_previous, histSize, ranges);
                 Imgproc.calcHist(Arrays.asList(reference_images[(curFrame / ExtractRate) % (BufferSize / ExtractRate)]), new MatOfInt(0), new Mat(), y_current, histSize, ranges);
                 double res = Imgproc.compareHist(y_previous, y_current, Imgproc.CV_COMP_CORREL);
-                Double d = new Double(res * 100);
-                if (d < 60) {
-                    System.out.println((curFrame / ExtractRate - 1) + " - " + curFrame / ExtractRate + " " + "** " + d + " **");
+                if (res*100 < 60) {
+                    System.out.println((curFrame / ExtractRate - 1) + " - " + curFrame / ExtractRate + " " + "** " + res*100 + " **");
                     if (curFrame / ExtractRate - Stage_Reference == FrameRate / ExtractRate * 15) {
                         System.out.println("Ads is from " + Stage_Reference / (FrameRate / ExtractRate) + " sec to " + (curFrame / ExtractRate) / (FrameRate / ExtractRate) + " sec");
                         Jump_Reference.add((int) (Stage_Reference / (FrameRate / ExtractRate)));
@@ -514,23 +569,82 @@ public class VideoPlayer implements ActionListener {
             curFrame++;
         }
 
+
         for(int i=0;i<Jump_Reference.size();i++)
             System.out.println("*** " + Jump_Reference.get(i));
         System.out.println("rewriting video file, please wait");
         //Find ad files in directory
         File f = new File(this.mainvideo);
         File af = new File(this.mainaudio);
-        ArrayList<String> ad_strings = new ArrayList<>();
-        ArrayList<File> ads = new ArrayList<>();
-        ArrayList<File> ads_audio = new ArrayList<>();
+        ArrayList<String> temp = new ArrayList<>();
+        ArrayList<String> temp2 = new ArrayList<>();
 
-        for (File file : Adsdir.listFiles()) {
-            if (file.getName().endsWith((".rgb"))) {
-                ad_strings.add(file.getPath());
+        //all three of the ad information arrays below should be in the same order
+        ArrayList<String> ad_strings = new ArrayList<>();
+        ArrayList<File> ads = new ArrayList<>(); //will switch up array order based on logo detection
+        ArrayList<File> ads_audio = new ArrayList<>(); //will switch up array order based on logo detection
+
+        //switch up the order of the logo_names array to match when the logos appear in the video
+        ArrayList<Integer> logo_location = new ArrayList<>();
+        for(int i=0;i<frame_matches.size();i++){
+            int high_output_amount = 0;
+            int high_output_pos = 450;
+            for(int j=0;j<frame_matches.get(i).size()-5;j++){
+                int sum = 0;
+                boolean high_output=true, firstchance=true;
+                for(int k=0;k<5;k++) {
+                    sum += frame_matches.get(i).get(j+k);
+                    if(frame_matches.get(i).get(j+k) < 9){
+                        if(firstchance)
+                            firstchance=false;
+                        else
+                            high_output = false;
+                    }
+                }
+                if(high_output && high_output_amount < sum) {
+                    high_output_pos = j;
+                    high_output_amount = sum;
+                }
+            }
+            logo_location.add(high_output_pos);
+        }
+        for(int i=0;i<logo_location.size() - 1;i++){ //rearrange logo_names based on logo_location
+            for (int j = 0; j < logo_location.size() - i - 1; j++)
+            {
+                if (logo_location.get(j) > logo_location.get(j+1))
+                {
+                    // swap arr[j] and arr[j+1]
+                    int temp_num = logo_location.get(j);
+                    logo_location.set(j, logo_location.get(j + 1));
+                    logo_location.set(j + 1, temp_num);
+                    String temp_str = logo_names.get(j);
+                    logo_names.set(j, logo_names.get(j + 1));
+                    logo_names.set(j + 1, temp_str);
+                }
             }
         }
+        System.out.println("Logo approximate seconds");
+        for(int i=0;i<logo_names.size();i++)
+            System.out.println(i +": "+logo_names.get(i) + " - " + logo_location.get(i)/ (FrameRate / ExtractRate) + " sec");
+
+        
+        //set up the logos to their corresponding ads
+        for (File file : Adsdir.listFiles()) {
+            if (file.getName().endsWith((".rgb"))) {
+                temp.add(file.getPath());
+                temp2.add(file.getName());
+            }
+        }
+        for(int j=0;j<logo_names.size();j++) {
+            for(int i=0;i<temp.size();i++){
+                if (temp2.get(i).substring(0, temp2.get(i).indexOf("_")).toLowerCase().equals(logo_names.get(j)))
+                    ad_strings.add(temp.get(i));
+            }
+        }
+
+        // put the ads in the order according to the array "ad_strings"
         if(ad_strings.isEmpty())
-            System.out.println("Ads not found");
+            System.out.println("Ads not found or Smart Ad-Replacer is off");
         else{
             for(int i=0;i<ad_strings.size();i++) {
                 ads.add(new File(ad_strings.get(i)));
@@ -554,15 +668,15 @@ public class VideoPlayer implements ActionListener {
                 if(jump_reference_iter<Jump_Reference.size()) {
                     if (Jump_Reference.get(jump_reference_iter) * 30 <= output_curFrame &&
                             output_curFrame < (Jump_Reference.get(jump_reference_iter) + 15) * 30) {
-                        ad_filestream.get(jump_reference_iter).read(bFile);
-                        outStream.write(bFile);
+                        if(SmartAdRemover) {
+                            ad_filestream.get(jump_reference_iter).read(bFile);
+                            outStream.write(bFile);
+                        }
                     } else {
                         outStream.write(bFile);
                     }
-                    if ((Jump_Reference.get(jump_reference_iter) + 15) * 30 <= output_curFrame) {
-                        ad_filestream.get(jump_reference_iter).close();
+                    if ((Jump_Reference.get(jump_reference_iter) + 15) * 30 <= output_curFrame)
                         jump_reference_iter++;
-                    }
                 }
                 else
                     outStream.write(bFile);
@@ -596,15 +710,15 @@ public class VideoPlayer implements ActionListener {
                 if(jump_reference_iter < Jump_Reference.size()) {
                     if (Jump_Reference.get(jump_reference_iter) <= output_cursec &&
                             output_cursec < Jump_Reference.get(jump_reference_iter) + 15) {
-                        ad_filestream.get(jump_reference_iter).read(aFile);
-                        outStream.write(aFile);
+                        if(SmartAdRemover) {
+                            ad_filestream.get(jump_reference_iter).read(aFile);
+                            outStream.write(aFile);
+                        }
                     } else {
                         outStream.write(aFile);
                     }
-                    if (Jump_Reference.get(jump_reference_iter) + 15 <= output_cursec){
-                        ad_filestream.get(jump_reference_iter).close();
+                    if (Jump_Reference.get(jump_reference_iter) + 15 <= output_cursec)
                         jump_reference_iter++;
-                    }
                 }
                 else
                     outStream.write(aFile);
