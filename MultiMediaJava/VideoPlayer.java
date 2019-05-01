@@ -1,5 +1,7 @@
 import javax.swing.*;
-import java.awt.*;
+import java.awt.Dimension;
+import java.awt.GridBagLayout;
+import java.awt.GridBagConstraints;
 import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
 import java.awt.event.ActionListener;
@@ -12,6 +14,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;                                                                                                                                          
 import org.opencv.core.*;
+import org.opencv.core.Core.MinMaxLocResult;
 import org.opencv.features2d.*;
 import org.opencv.xfeatures2d.*;
 import org.opencv.imgcodecs.*;
@@ -210,6 +213,7 @@ public class VideoPlayer implements ActionListener {
         Mat img2 = matching_reference_images[(curFrame/ExtractRate)%(BufferSize/ExtractRate)];
         //Imgproc.cvtColor(Imgcodecs.imread(logo, Imgcodecs.IMREAD_COLOR),img1,Imgproc.COLOR_BGR2RGB);
 
+        // SIFT feature detection
         // create keypoints and descriptors for logo images and frames
         ArrayList<MatOfKeyPoint> logo_keypoints = new ArrayList<>();
         ArrayList<Mat> logo_descriptors = new ArrayList<>();
@@ -220,10 +224,10 @@ public class VideoPlayer implements ActionListener {
 
         //-- Step 1: Detect the keypoints using SURF Detector, compute the descriptors
         int hessianThreshold = 400;
-        int nOctaves = 4, nOctaveLayers = 6;
+        int nOctaves = 4, nOctaveLayers = 5;
         boolean extended = false, upright = false;
         //ORB detector = ORB.create();
-        SIFT detector = SIFT.create(hessianThreshold, nOctaveLayers);
+        SIFT detector = SIFT.create(hessianThreshold, nOctaveLayers, 0.08);
         DescriptorMatcher matcher = DescriptorMatcher.create(DescriptorMatcher.FLANNBASED);
         detector.detectAndCompute(img2, new Mat(), keypoints2, descriptors2);
         //-- Step 2: Matching descriptor vectors with a FLANN based matcher
@@ -233,7 +237,8 @@ public class VideoPlayer implements ActionListener {
             logo_descriptors.add(new Mat());
             detector.detectAndCompute(logo_mat.get(i), new Mat(), logo_keypoints.get(i), logo_descriptors.get(i));
             logo_knnMatches.add(new ArrayList<>());
-            matcher.knnMatch(logo_descriptors.get(i), descriptors2, logo_knnMatches.get(i), 2);
+            if (!logo_descriptors.get(i).empty() &&  !descriptors2.empty())
+                matcher.knnMatch(logo_descriptors.get(i), descriptors2, logo_knnMatches.get(i), 2);
         }
 
         //-- Filter matches using the Lowe's ratio test
@@ -248,17 +253,29 @@ public class VideoPlayer implements ActionListener {
                     }
                 }
             }
-//            MatOfDMatch goodMatches = new MatOfDMatch();
-//            goodMatches.fromList(listOfGoodMatches);
-//            frame_matches.get(j).add(listOfGoodMatches.size());
-//            //-- Draw matches
-//            Mat imgMatches = new Mat();
-//            Features2d.drawMatches(logo_mat.get(j), logo_keypoints.get(j), img2, keypoints2, goodMatches, imgMatches, Scalar.all(-1),
-//                    Scalar.all(-1), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
-//            //-- Show detected matches
-//
-//            Imgcodecs.imwrite("img" + j +"_" +curFrame/ExtractRate+"_"+ listOfGoodMatches.size() +".png", imgMatches);
+            MatOfDMatch goodMatches = new MatOfDMatch();
+            goodMatches.fromList(listOfGoodMatches);
+            frame_matches.get(j).add(listOfGoodMatches.size());
+            //-- Draw matches
+            Mat imgMatches = new Mat();
+            Features2d.drawMatches(logo_mat.get(j), logo_keypoints.get(j), img2, keypoints2, goodMatches, imgMatches, Scalar.all(-1),
+                    Scalar.all(-1), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
+            //-- Show detected matches
+
+            Imgcodecs.imwrite("img" + j +"_" +curFrame/ExtractRate+"_"+ listOfGoodMatches.size() +".png", imgMatches);
         }
+
+        //test Template matching
+//        Mat outputImage=new Mat();
+//        Imgproc.matchTemplate(img2, logo_mat.get(1), outputImage, Imgproc.TM_CCOEFF);
+//
+//        MinMaxLocResult mmr = Core.minMaxLoc(outputImage);
+//        Point matchLoc=mmr.maxLoc;
+//        //Draw rectangle on result image
+//        Imgproc.rectangle(img2, matchLoc, new Point(matchLoc.x + logo_mat.get(1).cols(),
+//                matchLoc.y + logo_mat.get(1).rows()), new Scalar(255, 255, 255));
+//
+//        Imgcodecs.imwrite("img" + 1 +"_" +curFrame/ExtractRate+".png", img2);
     }
 
     // to play the outputted rgb file
@@ -371,7 +388,7 @@ public class VideoPlayer implements ActionListener {
             ArrayList<String> logo_strings = new ArrayList<>();
             ArrayList<String> logo_name_temp = new ArrayList<>();
             for (File file : logosdir.listFiles()) {
-                if (file.getName().endsWith((".bmp"))) {
+                if (file.getName().endsWith((".rgb"))) {
                     logo_strings.add(file.getPath());
                     logo_name_temp.add(file.getName());
                 }
@@ -380,7 +397,28 @@ public class VideoPlayer implements ActionListener {
                 System.out.println("Logos not found");
             else {
                 for (int i = 0; i < logo_strings.size(); i++) {
-                    this.logo_mat.add(Imgcodecs.imread(logo_strings.get(i), Imgcodecs.IMREAD_COLOR));
+                    File f = new File(logo_strings.get(i));
+                    byte[] bFile = new byte[WIDTH*HEIGHT*3];
+                    try{
+                        FileInputStream is  = new FileInputStream(f);
+                        is.read(bFile);
+                        is.close();
+                    }catch (Exception e){
+                        e.printStackTrace();
+                    }
+                    Mat temp = new Mat(HEIGHT, WIDTH, CvType.CV_8UC3);
+                    for(int h = 0, ind = 0; h < HEIGHT; h++){
+                        for(int w = 0; w < WIDTH; w++) {
+                            byte pixel[] = new byte[3];
+                            pixel[0] = bFile[ind + HEIGHT * WIDTH * 2];
+                            pixel[1] = bFile[ind + HEIGHT * WIDTH];
+                            pixel[2] = bFile[ind];
+                            temp.put(h, w, pixel);
+                            ind++;
+                        }
+                    }
+                    //matching_reference_images[(curFrame/ExtractRate)%(BufferSize/ExtractRate)] = temp;
+                    this.logo_mat.add(temp);
                     this.logo_names.add(logo_name_temp.get(i).substring(0, logo_name_temp.get(i).indexOf("_")).toLowerCase());
                     this.frame_matches.add(new ArrayList<>());
                 }
@@ -594,7 +632,7 @@ public class VideoPlayer implements ActionListener {
                 boolean high_output=true, firstchance=true;
                 for(int k=0;k<5;k++) {
                     sum += frame_matches.get(i).get(j+k);
-                    if(frame_matches.get(i).get(j+k) < 9){
+                    if(frame_matches.get(i).get(j+k) < 8){
                         if(firstchance)
                             firstchance=false;
                         else
@@ -627,7 +665,7 @@ public class VideoPlayer implements ActionListener {
         for(int i=0;i<logo_names.size();i++)
             System.out.println(i +": "+logo_names.get(i) + " - " + logo_location.get(i)/ (FrameRate / ExtractRate) + " sec");
 
-        
+
         //set up the logos to their corresponding ads
         for (File file : Adsdir.listFiles()) {
             if (file.getName().endsWith((".rgb"))) {
