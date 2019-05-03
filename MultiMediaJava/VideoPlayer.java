@@ -1,4 +1,6 @@
 import javax.swing.*;
+import java.nio.ByteBuffer;
+import java.text.DecimalFormat;
 import java.awt.Dimension;
 import java.awt.GridBagLayout;
 import java.awt.GridBagConstraints;
@@ -14,7 +16,6 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;                                                                                                                                          
 import org.opencv.core.*;
-import org.opencv.core.Core.MinMaxLocResult;
 import org.opencv.features2d.*;
 import org.opencv.xfeatures2d.*;
 import org.opencv.imgcodecs.*;
@@ -37,8 +38,9 @@ public class VideoPlayer implements ActionListener {
     final MatOfInt histSize = new MatOfInt(129600);
 
 
-    int Stage_Reference = 0;
-    ArrayList<Integer> Jump_Reference = new ArrayList<>();
+    //int Stage_Reference = 0;
+    ArrayList<Double> Stage_Reference = new ArrayList<>();
+    ArrayList<Double> Jump_Reference = new ArrayList<>();
     ArrayList<String> logo_names = new ArrayList<>();
     ArrayList<Mat> logo_mat = new ArrayList<>();
     ArrayList<ArrayList<Integer>> frame_matches = new ArrayList<>();
@@ -142,19 +144,24 @@ public class VideoPlayer implements ActionListener {
         long t = System.currentTimeMillis();
         //        System.out.println("Loading " + (k + 1) + "th frame.");
         File f = new File(this.mainvideo);
+        File af = new File(this.mainaudio);
         byte[] bFile = new byte[WIDTH*HEIGHT*3];
+        byte[] aFile = new byte[2*48000];
         try{
             FileInputStream is  = new FileInputStream(f);
             is.skip((long)WIDTH*HEIGHT*3*curFrame);
             is.read(bFile);
             is.close();
+
+            FileInputStream as = new FileInputStream(af);
+            as.skip(2*48000*curFrame + 44);
+            as.read(aFile);
+            as.close();
         }catch (Exception e){
             e.printStackTrace();
         }
-
-        if(images[curImages] == null){
+        if(images[curImages] == null)
             images[curImages] = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
-        }
 
         if(curImages%ExtractRate == 0){
             if(reference_images[curImages/ExtractRate] == null)
@@ -162,6 +169,7 @@ public class VideoPlayer implements ActionListener {
             if(matching_reference_images[curImages/ExtractRate] == null)
                 matching_reference_images[curImages/ExtractRate] = new Mat(HEIGHT, WIDTH, CvType.CV_8UC3);
         }
+        Mat ytemp = new Mat(HEIGHT, WIDTH, CvType.CV_8UC3);
         Mat temp = new Mat(HEIGHT, WIDTH, CvType.CV_8UC3);
         for(int h = 0, ind = 0; h < HEIGHT; h++){
             for(int w = 0; w < WIDTH; w++){
@@ -192,13 +200,17 @@ public class VideoPlayer implements ActionListener {
                     pixel_ycbcr[1] = g;
                     pixel_ycbcr[2] = r;
                     temp.put(h, w, pixel_ycbcr);
-
+                    ytemp.put(h, w, pixel_ycbcr);
                 }
                 ind++;
             }
         }
         matching_reference_images[(curFrame/ExtractRate)%(BufferSize/ExtractRate)] = temp;
-        //Imgproc.cvtColor(temp,matching_reference_images[(curFrame/ExtractRate)%(BufferSize/ExtractRate)],Imgproc.COLOR_BGR2GRAY);
+        if(curImages%ExtractRate == 0) {
+            //System.out.println(curImages/ExtractRate + " : " +ByteBuffer.wrap(aFile).getDouble());
+            reference_images[(curFrame / ExtractRate) % (BufferSize / ExtractRate)] = temp;
+            //Imgproc.cvtColor(ytemp, reference_images[(curFrame / ExtractRate) % (BufferSize / ExtractRate)], Imgproc.COLOR_BGR2);
+        }
         if(curImages%ExtractRate == 0 && SmartAdRemover)
             processFrame();
 
@@ -256,26 +268,14 @@ public class VideoPlayer implements ActionListener {
             MatOfDMatch goodMatches = new MatOfDMatch();
             goodMatches.fromList(listOfGoodMatches);
             frame_matches.get(j).add(listOfGoodMatches.size());
-            //-- Draw matches
-            Mat imgMatches = new Mat();
-            Features2d.drawMatches(logo_mat.get(j), logo_keypoints.get(j), img2, keypoints2, goodMatches, imgMatches, Scalar.all(-1),
-                    Scalar.all(-1), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
-            //-- Show detected matches
-
-            Imgcodecs.imwrite("img" + j +"_" +curFrame/ExtractRate+"_"+ listOfGoodMatches.size() +".png", imgMatches);
+//            //-- Draw matches
+//            Mat imgMatches = new Mat();
+//            Features2d.drawMatches(logo_mat.get(j), logo_keypoints.get(j), img2, keypoints2, goodMatches, imgMatches, Scalar.all(-1),
+//                    Scalar.all(-1), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
+//            //-- Show detected matches
+//
+//            Imgcodecs.imwrite("img" + j +"_" +curFrame/ExtractRate+"_"+ listOfGoodMatches.size() +".png", imgMatches);
         }
-
-        //test Template matching
-//        Mat outputImage=new Mat();
-//        Imgproc.matchTemplate(img2, logo_mat.get(1), outputImage, Imgproc.TM_CCOEFF);
-//
-//        MinMaxLocResult mmr = Core.minMaxLoc(outputImage);
-//        Point matchLoc=mmr.maxLoc;
-//        //Draw rectangle on result image
-//        Imgproc.rectangle(img2, matchLoc, new Point(matchLoc.x + logo_mat.get(1).cols(),
-//                matchLoc.y + logo_mat.get(1).rows()), new Scalar(255, 255, 255));
-//
-//        Imgcodecs.imwrite("img" + 1 +"_" +curFrame/ExtractRate+".png", img2);
     }
 
     // to play the outputted rgb file
@@ -427,6 +427,7 @@ public class VideoPlayer implements ActionListener {
         for(int i=0;i<logo_names.size();i++)
             System.out.println(logo_names.get(i));
         //data();
+        Stage_Reference.clear();
         Jump_Reference.clear();
         preprocessVideo();
         loadVideo();
@@ -574,7 +575,6 @@ public class VideoPlayer implements ActionListener {
 
     //preprocess the entire video and remove ads from it
     public void preprocessVideo(){
-        Stage_Reference = 0; // in the case that the ad starts from the start
         curFrame = from;
         curImages = 0;
         System.out.println("Loading frames...");
@@ -585,6 +585,7 @@ public class VideoPlayer implements ActionListener {
         }
 
         // compare histograms and find the original ad locations
+        Stage_Reference.add(0.0);
         for(int i = 0; i < FrameNum; i++) {
             loadFrame();
             if (curFrame > 0 && curFrame % ExtractRate == 0) {
@@ -594,19 +595,82 @@ public class VideoPlayer implements ActionListener {
                 Imgproc.calcHist(Arrays.asList(reference_images[(curFrame / ExtractRate - 1) % (BufferSize / ExtractRate)]), new MatOfInt(0), new Mat(), y_previous, histSize, ranges);
                 Imgproc.calcHist(Arrays.asList(reference_images[(curFrame / ExtractRate) % (BufferSize / ExtractRate)]), new MatOfInt(0), new Mat(), y_current, histSize, ranges);
                 double res = Imgproc.compareHist(y_previous, y_current, Imgproc.CV_COMP_CORREL);
-                if (res*100 < 60) {
-                    System.out.println((curFrame / ExtractRate - 1) + " - " + curFrame / ExtractRate + " " + "** " + res*100 + " **");
-                    if (curFrame / ExtractRate - Stage_Reference == FrameRate / ExtractRate * 15) {
-                        System.out.println("Ads is from " + Stage_Reference / (FrameRate / ExtractRate) + " sec to " + (curFrame / ExtractRate) / (FrameRate / ExtractRate) + " sec");
-                        Jump_Reference.add((int) (Stage_Reference / (FrameRate / ExtractRate)));
+                //System.out.println(res);
+                // if the histogram is not nearly the same, we compare features within the frames as a second test
+                if (res*100 < 70) {
+                    MatOfKeyPoint keypoints = new MatOfKeyPoint(), keypoints2 = new MatOfKeyPoint();
+                    Mat descriptors = new Mat(), descriptors2 = new Mat();
+                    List<MatOfDMatch> knnMatches = new ArrayList<>();
+                    //-- Step 1: Detect the keypoints using SURF Detector, compute the descriptors
+                    int hessianThreshold = 400;
+                    int nOctaves = 4, nOctaveLayers = 5;
+                    boolean extended = false, upright = false;
+                    //ORB detector = ORB.create();
+                    //-- Step 2: Matching descriptor vectors with a FLANN based matcher
+                    // Since SURF is a floating-point descriptor NORM_L2 is used
+                    SIFT detector = SIFT.create(hessianThreshold, nOctaveLayers, 0.08);
+                    DescriptorMatcher matcher = DescriptorMatcher.create(DescriptorMatcher.FLANNBASED);
+                    detector.detectAndCompute(reference_images[(curFrame / ExtractRate - 1) % (BufferSize / ExtractRate)]
+                            , new Mat(), keypoints2, descriptors2);
+                    detector.detectAndCompute(reference_images[(curFrame / ExtractRate) % (BufferSize / ExtractRate)]
+                            , new Mat(), keypoints, descriptors);
+                    if (!descriptors.empty() &&  !descriptors2.empty())
+                        matcher.knnMatch(descriptors, descriptors2, knnMatches, 2);
+
+                    //-- Filter matches using the Lowe's ratio test
+                    float ratioThresh = 0.65f;
+                    List<DMatch> listOfGoodMatches = new ArrayList<>();
+                    for (int k = 0; k < knnMatches.size(); k++) {
+                        if (knnMatches.get(k).rows() > 1) {
+                            DMatch[] matches = knnMatches.get(k).toArray();
+                            if (matches[0].distance < ratioThresh * matches[1].distance) {
+                                listOfGoodMatches.add(matches[0]);
+                            }
+                        }
                     }
-                    Stage_Reference = curFrame / ExtractRate;
+//                    MatOfDMatch goodMatches = new MatOfDMatch();
+//                    goodMatches.fromList(listOfGoodMatches);
+//                    //-- Draw matches
+//                    Mat imgMatches = new Mat();
+//                    Features2d.drawMatches(reference_images[(curFrame / ExtractRate - 1) % (BufferSize / ExtractRate)]
+//                            , keypoints, reference_images[(curFrame / ExtractRate) % (BufferSize / ExtractRate)],
+//                            keypoints2, goodMatches, imgMatches, Scalar.all(-1),
+//                            Scalar.all(-1), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
+//                    //-- Show detected matches
+//
+//                    Imgcodecs.imwrite("img_" +curFrame/ExtractRate+"_"+ listOfGoodMatches.size() +".png", imgMatches);
+//
+//                    DecimalFormat df = new DecimalFormat();
+//                    df.setMaximumFractionDigits(2);
+//                    System.out.println(df.format((curFrame / ExtractRate - 1)/ (FrameRate / ExtractRate)) +
+//                            " - " + df.format((curFrame / ExtractRate)/ (FrameRate / ExtractRate)) + " " + "** " + res*100 + " **");
+                    if(listOfGoodMatches.size()<10) {
+                        Stage_Reference.add((curFrame / ExtractRate) / (FrameRate / ExtractRate));
+                        System.out.println("potential ad frame change: " + (curFrame / ExtractRate) / (FrameRate / ExtractRate));
+                    }
                 }
             }
-
             curFrame++;
         }
+        Stage_Reference.add(FrameNum/FrameRate);
 
+        for(int i=0;i<Stage_Reference.size();i++){
+            int j=0;
+            boolean ad = false;
+            while(Stage_Reference.get(i+j) < Stage_Reference.get(i) + 18){
+                j++;
+                ad = true;
+                if(i+j == Stage_Reference.size())
+                    break;
+            }
+            j--;
+            if(Stage_Reference.get(i+j) < Stage_Reference.get(i) + 19 &&
+                    Stage_Reference.get(i)+10 < Stage_Reference.get(i+j) && ad) {
+                Jump_Reference.add(Stage_Reference.get(i));
+                Jump_Reference.add(Stage_Reference.get(i+j));
+            }
+            i=i+j;
+        }
 
         for(int i=0;i<Jump_Reference.size();i++)
             System.out.println("*** " + Jump_Reference.get(i));
@@ -702,19 +766,23 @@ public class VideoPlayer implements ActionListener {
             for(int i=0;i<ads.size();i++)
                 ad_filestream.add(new FileInputStream(ads.get(i)));
             DataOutputStream outStream = new DataOutputStream(new BufferedOutputStream(fos));
+            boolean ad_written = false;
             while(is.read(bFile) != -1){
                 if(jump_reference_iter<Jump_Reference.size()) {
-                    if (Jump_Reference.get(jump_reference_iter) * 30 <= output_curFrame &&
-                            output_curFrame < (Jump_Reference.get(jump_reference_iter) + 15) * 30) {
-                        if(SmartAdRemover) {
-                            ad_filestream.get(jump_reference_iter).read(bFile);
-                            outStream.write(bFile);
+                    if (Jump_Reference.get(jump_reference_iter) * 30 - 10 <= output_curFrame &&
+                            output_curFrame <= (Jump_Reference.get(jump_reference_iter + 1) * 30) + 5){
+                        if(SmartAdRemover && !ad_written) {
+                            while(ad_filestream.get(jump_reference_iter / 2).read(bFile) != -1)
+                                outStream.write(bFile);
+                            ad_written=true;
                         }
                     } else {
                         outStream.write(bFile);
                     }
-                    if ((Jump_Reference.get(jump_reference_iter) + 15) * 30 <= output_curFrame)
-                        jump_reference_iter++;
+                    if ((Jump_Reference.get(jump_reference_iter + 1) * 30 + 5<= output_curFrame)) {
+                        jump_reference_iter+=2;
+                        ad_written=false;
+                    }
                 }
                 else
                     outStream.write(bFile);
@@ -728,7 +796,7 @@ public class VideoPlayer implements ActionListener {
         }
 
         //rewrite an audio file with the ad music in place
-        byte[] aFile = new byte[2 * 48000];
+        byte[] aFile = new byte[2*48000 / 30];
         byte[] thr = new byte[44];
         int output_cursec = 0;
         jump_reference_iter = 0;
@@ -743,20 +811,29 @@ public class VideoPlayer implements ActionListener {
             //header file of wav
             is.read(thr);
             outStream.write(thr);
+            boolean ad_written = false;
             //write to wav file
             while(is.read(aFile) != -1){
                 if(jump_reference_iter < Jump_Reference.size()) {
-                    if (Jump_Reference.get(jump_reference_iter) <= output_cursec &&
-                            output_cursec < Jump_Reference.get(jump_reference_iter) + 15) {
-                        if(SmartAdRemover) {
-                            ad_filestream.get(jump_reference_iter).read(aFile);
-                            outStream.write(aFile);
+                    if (Jump_Reference.get(jump_reference_iter) * 30 - 10<= output_cursec &&
+                            output_cursec < Jump_Reference.get(jump_reference_iter + 1) * 30 + 5) {
+                        if(SmartAdRemover && !ad_written) {
+                            ad_filestream.get(jump_reference_iter / 2).read(thr);
+                            for(int i=0;i<15 * 30;i++) {
+                                ad_filestream.get(jump_reference_iter / 2).read(aFile);
+                                outStream.write(aFile);
+                            }
+//                            while(ad_filestream.get(jump_reference_iter / 2).read(aFile) != -1)
+//                                outStream.write(aFile);
+                            ad_written=true;
                         }
                     } else {
                         outStream.write(aFile);
                     }
-                    if (Jump_Reference.get(jump_reference_iter) + 15 <= output_cursec)
-                        jump_reference_iter++;
+                    if (Jump_Reference.get(jump_reference_iter + 1) * 30 + 5 <= output_cursec) {
+                        jump_reference_iter += 2;
+                        ad_written = false;
+                    }
                 }
                 else
                     outStream.write(aFile);
