@@ -1,6 +1,6 @@
 # Video Ad Remover
 Multimedia Systems Design Project
-</br>
+
 
 There is an increased amount of video and audio content broadcast and streamed everywhere today. Such content needs to be frequently analyzed for a variety of reasons and applications – such as searching, indexing, summarizing, etc. One general area is in modifying content is to remove/replace specific parts of frames or even a number of frames altogether. Let’s consider removal of frames from video & audio content. The motivating question that you will need to think about in this project may be described by - how do you automatically analyze video/audio and remove frames that correspond to a specific description. </br>
 General examples of this type may include: </br>
@@ -17,13 +17,17 @@ Functions of program:</br>
 
 Libraries used: OpenCV(SIFT image detection algorithm for dectecting brand images within video)</br>
 Program Input: </br>
-• Video (and corresponding audio) files with advertisements in them. (rgb + .wav) format</br>
+• Video (and corresponding audio) files with advertisements in them.(rgb + .wav) format</br>
 • Brand image files to be detected in the input videos</br>
 • Brand advertisements in the same format(.rgb + .wav) to be inserted in the video</br>
 
 Anatomy of a video:</br>
+</br>![alt text](https://raw.githubusercontent.com/samuel40791765/VideoAdRemover/master/projectimages/pic.png) </br>
 • Frame: a single still image from a video, eg NTSC - 30 frames/second, film – 24 frames/second</br>
 • Shot: sequence of frames recorded in a single camera operation</br>
 • Sequence or Scenes: collection of shots forming a semantic unit which conceptually may be shot at a single time and place</br>
+
+
+
 
 
