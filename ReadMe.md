@@ -15,7 +15,9 @@ Functions of program:</br>
 2. Takes input of video/audio stream with advertisement sections and creates a new video/audio stream with the advertisements removed.</br>
 3. Analyzes the video frames to see if any known brands exist, and if so, inserts the right advertisement at the appropriate original place. All removements and replacement frames are inserted seamlessly.</br></br>
 
-Libraries used: OpenCV(SIFT image detection algorithm for dectecting brand images within video)</br>
+Techniques used:</br>
+• Histogram comparing between video frames/video scenes to detect large flunctuations in pixel information(large flunctuations in short timeframes could be ads)</br>
+• OpenCV(SIFT image detection algorithm for dectecting brand images within video)</br></br>
 Program Input: </br>
 • Video (and corresponding audio) files with advertisements in them.(rgb + .wav) format</br>
 • Brand image files to be detected in the input videos</br>
